@@ -1,51 +1,65 @@
 import { Link } from 'react-router-dom';
 import { PublicPreset } from '@/types';
 import { useAuthStore } from '@/store/useAuthStore';
-import { likesApi } from '@/api/likes';
-import { useState } from 'react';
+import { useLikesStore } from '@/store/useLikesStore';
+import { useToast } from '@/hooks/useToast';
+import { useTheme } from '@/context/ThemeContext';
+import { useState, useEffect } from 'react';
 
 interface PresetCardProps {
   preset: PublicPreset;
-  onLikeChange?: () => void;
 }
 
-export const PresetCard = ({ preset, onLikeChange }: PresetCardProps) => {
+export const PresetCard = ({ preset }: PresetCardProps) => {
   const { isAuthenticated } = useAuthStore();
+  const { isLiked, like, unlike } = useLikesStore();
+  const { showToast } = useToast();
+  const { mode, theme } = useTheme();
+  const currentTheme = mode === 'dark' ? theme.dark : theme.light;
+  
   const [isLiking, setIsLiking] = useState(false);
-  const [liked, setLiked] = useState(preset.isLikedByCurrentUser);
+  const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(preset.likesCount);
 
+  useEffect(() => {
+    setLiked(isLiked(preset.id));
+  }, [preset.id, isLiked]);
+
   const handleLike = async (e: React.MouseEvent) => {
-    e.preventDefault(); // Предотвращаем переход по ссылке
-    if (!isAuthenticated) return;
+    e.preventDefault();
+    
+    // Если не авторизован — показываем уведомление
+    if (!isAuthenticated) {
+      showToast('❤️ Чтобы поставить лайк, войдите в аккаунт', 'warning');
+      return;
+    }
 
     setIsLiking(true);
     try {
       if (liked) {
-        await likesApi.unlike(preset.id);
+        await unlike(preset.id);
         setLikesCount(prev => prev - 1);
+        setLiked(false);
       } else {
-        await likesApi.like(preset.id);
+        await like(preset.id);
         setLikesCount(prev => prev + 1);
+        setLiked(true);
       }
-      setLiked(!liked);
-      onLikeChange?.();
     } catch (error) {
       console.error('Failed to toggle like:', error);
+      showToast('Не удалось поставить лайк. Попробуйте позже.', 'error');
     } finally {
       setIsLiking(false);
     }
   };
 
   return (
-    <Link
-      to={`/preset/${preset.id}`}
-      style={{ textDecoration: 'none' }}
-    >
+    <Link to={`/preset/${preset.id}`} style={{ textDecoration: 'none' }}>
       <div style={{
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: currentTheme.surface,
         borderRadius: '16px',
         padding: '16px',
+        border: `1px solid ${currentTheme.border}`,
         transition: 'transform 0.2s, box-shadow 0.2s',
         cursor: 'pointer',
         height: '100%',
@@ -54,53 +68,63 @@ export const PresetCard = ({ preset, onLikeChange }: PresetCardProps) => {
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = 'translateY(-4px)';
-        e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
+        e.currentTarget.style.boxShadow = mode === 'dark' 
+          ? '0 8px 24px rgba(0,0,0,0.3)' 
+          : '0 8px 24px rgba(0,0,0,0.1)';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = 'translateY(0)';
         e.currentTarget.style.boxShadow = 'none';
       }}>
-        {/* Canvas preview placeholder */}
         <div style={{
-          backgroundColor: '#111',
+          backgroundColor: mode === 'dark' ? '#111' : '#e0e0e0',
           borderRadius: '12px',
           height: '150px',
           marginBottom: '12px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: `linear-gradient(135deg, ${preset.config.colors?.[0] || '#333'}20, #000)`,
           fontSize: '32px',
         }}>
           🎨
         </div>
 
-        <h3 style={{ color: '#fff', fontSize: '18px', marginBottom: '8px' }}>{preset.name}</h3>
+        <h3 style={{ color: currentTheme.textPrimary, fontSize: '18px', marginBottom: '8px' }}>
+          {preset.name}
+        </h3>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-          <span style={{ color: '#888', fontSize: '12px' }}>{preset.author?.email || 'Пользователь удалён'}</span>
+          <span style={{ color: currentTheme.textSecondary, fontSize: '12px' }}>
+            {preset.author?.email?.split('@')[0] || 'Пользователь'}
+          </span>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <span style={{ color: '#888', fontSize: '12px' }}>❤️ {likesCount}</span>
-            <span style={{ color: '#888', fontSize: '12px' }}>💬 {preset.commentsCount}</span>
-            <span style={{ color: '#888', fontSize: '12px' }}>👁️ {preset.viewsCount}</span>
+            <span style={{ color: currentTheme.textSecondary, fontSize: '12px' }}>❤️ {likesCount}</span>
+            <span style={{ color: currentTheme.textSecondary, fontSize: '12px' }}>💬 {preset.commentsCount}</span>
+            <span style={{ color: currentTheme.textSecondary, fontSize: '12px' }}>👁️ {preset.viewsCount}</span>
           </div>
         </div>
 
         <button
           onClick={handleLike}
-          disabled={!isAuthenticated || isLiking}
+          disabled={isLiking}
           style={{
             marginTop: '8px',
             padding: '8px',
-            backgroundColor: liked ? '#ff4757' : 'rgba(255,255,255,0.1)',
-            border: 'none',
+            backgroundColor: 'transparent',
+            border: `1px solid ${liked ? '#ff4757' : currentTheme.border}`,
             borderRadius: '8px',
-            color: '#fff',
-            cursor: isAuthenticated ? 'pointer' : 'not-allowed',
-            opacity: isAuthenticated ? 1 : 0.5,
+            color: liked ? '#ff4757' : currentTheme.textPrimary,
+            cursor: !isAuthenticated ? 'not-allowed' : 'pointer',
+            transition: 'all 0.2s',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
           }}
+          title={!isAuthenticated ? 'Войдите, чтобы поставить лайк' : ''}
         >
-          {isLiking ? '...' : (liked ? '❤️ Лайкнут' : '🤍 Лайкнуть')}
+          <span style={{ fontSize: '16px' }}>{liked ? '❤️' : '🤍'}</span>
+          <span>{liked ? 'Лайкнут' : 'Лайкнуть'}</span>
         </button>
       </div>
     </Link>
