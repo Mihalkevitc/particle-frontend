@@ -8,6 +8,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   background: #0a0a0a;
   color: #ffffff;
+  overflow-x: hidden;
 }
 
 button {
@@ -15,6 +16,32 @@ button {
   font-family: inherit;
 }
 
-input {
+input, select, textarea {
   font-family: inherit;
+}
+
+/* Скрываем скроллбар визуально, но оставляем функционал */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.3);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.2) transparent;
 }
