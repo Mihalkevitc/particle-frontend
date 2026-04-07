@@ -1,6 +1,23 @@
 import { http } from './client';
 import { Preset, PublicPreset, ParticleConfig } from '@/types';
 
+export interface PresetWithStats {
+  id: number;
+  name: string;
+  config: ParticleConfig;
+  isPublic: boolean;
+  author: {
+    id: number;
+    email: string;
+  };
+  viewsCount: number;
+  likesCount: number;
+  commentsCount: number;
+  isLikedByCurrentUser: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const presetsApi = {
   getPublicFeed: (): Promise<PublicPreset[]> =>
     http.get('/presets/public').then(res => res.data),
@@ -14,8 +31,13 @@ export const presetsApi = {
   getLikedPresets: (): Promise<PublicPreset[]> =>
     http.get('/presets/liked').then(res => res.data),
 
-  getPresetById: (id: number): Promise<Preset> =>
-    http.get(`/presets/${id}`).then(res => res.data),
+  // Защищённый эндпоинт — требует авторизацию
+  getPresetById: (id: number): Promise<PresetWithStats> =>
+    http.get(`/presets/${id}`, {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+      },
+    }).then(res => res.data),
 
   createPreset: (data: { name: string; config: ParticleConfig; isPublic: boolean }): Promise<Preset> =>
     http.post('/presets', data).then(res => res.data),

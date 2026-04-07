@@ -15,12 +15,25 @@ class ApiClient {
     });
 
     this.client.interceptors.request.use(this.handleAuthInterceptor);
+    this.client.interceptors.response.use(
+      (response) => {
+        console.log(`[API] ${response.config.method?.toUpperCase()} ${response.config.url} -> ${response.status}`);
+        return response;
+      },
+      (error) => {
+        console.error(`[API Error] ${error.config?.method?.toUpperCase()} ${error.config?.url} ->`, error.response?.status, error.message);
+        return Promise.reject(error);
+      }
+    );
   }
 
   private handleAuthInterceptor = (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
     const token = this.getToken();
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log(`[API] Adding auth token to ${config.url}`);
+    } else {
+      console.log(`[API] No token for ${config.url}`);
     }
     return config;
   };
