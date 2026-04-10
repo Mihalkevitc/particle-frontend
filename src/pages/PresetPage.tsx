@@ -115,7 +115,7 @@ export const PresetPage = () => {
       particleSystemRef.current.destroy();
     }
     
-    const libConfig = prepareConfigForLibrary(preset.config);
+    const libConfig = prepareConfigForLibrary(preset.config);a
     console.log('Initializing ParticleLib with config:', libConfig);
     
     try {
