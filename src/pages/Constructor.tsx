@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useToast } from '@/hooks/useToast';
@@ -44,6 +44,7 @@ export const Constructor = () => {
   const { isAuthenticated } = useAuthStore();
   const { toasts, showToast, removeToast } = useToast();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const presetId = searchParams.get('id');
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -156,9 +157,14 @@ export const Constructor = () => {
       ps.setBackgroundColor(canvasBgColor);
       ps.setBorderRadius(`${borderRadius}px`);
       
+      // Применяем параметры поведения после инициализации
       const params = getBehaviorParams();
       if (Object.keys(params).length > 0) {
-        ps.setBehavior(selectedBehavior, params);
+        setTimeout(() => {
+          if (particleSystemRef.current) {
+            particleSystemRef.current.setBehavior(selectedBehavior, params);
+          }
+        }, 100);
       }
       
       const fpsInterval = setInterval(() => {
@@ -176,56 +182,67 @@ export const Constructor = () => {
     }
   }, [particleCount, colors, particleSize, particleShape, initSpeed, selectedBehavior, targetFps, canvasBgColor, borderRadius, followSpeed, gravityStrength, gravityMaxSpeed, repulseRadius, repulseForce, repulseDamping, magneticStrength, magneticFieldStrength, magneticRadius, magneticMaxSpeed, vortexStrength, vortexRadius, vortexMaxSpeed, waveAmplitude, waveFrequency, waveSpeed, waveMaxSpeed, explosionRadius, explosionDuration, explosionDamping]);
 
-  const loadPreset = useCallback(async (id: number) => {
+  // Загрузка пресета для редактирования
+  const loadPresetForEdit = useCallback(async (id: number) => {
     setIsLoading(true);
     try {
-      const preset = await presetsApi.getPresetById(id);
-      setPresetName(preset.name);
-      setIsPublic(preset.isPublic);
+      const presetData = await presetsApi.getPresetById(id);
       
-      const config = preset.config as ExtendedParticleConfig;
-      setParticleCount(config.particleCount);
-      setParticleSize(config.particleSize);
-      setParticleShape(config.shape || 'circle');
-      setInitSpeed(config.initSpeed || 1.5);
-      setColors(config.colors);
-      setSelectedBehavior(config.behavior);
+      setPresetName(presetData.name);
+      setIsPublic(presetData.isPublic);
       
-      const params = config.behaviorParams || {};
-      setFollowSpeed(params.speed || 2);
-      setGravityStrength(params.strength || 0.1);
-      setGravityMaxSpeed(params.maxSpeed || 4);
-      setRepulseRadius(params.radius || 150);
-      setRepulseForce(params.force || 3);
-      setRepulseDamping(params.damping || 0.97);
-      setMagneticStrength(params.strength || 0.02);
-      setMagneticFieldStrength(params.fieldStrength || 1.5);
-      setMagneticRadius(params.radius || 200);
-      setMagneticMaxSpeed(params.maxSpeed || 4);
-      setVortexStrength(params.strength || 0.15);
-      setVortexRadius(params.radius || 200);
-      setVortexMaxSpeed(params.maxSpeed || 4);
-      setWaveAmplitude(params.amplitude || 0.8);
-      setWaveFrequency(params.frequency || 0.015);
-      setWaveSpeed(params.speed || 0.03);
-      setWaveMaxSpeed(params.maxSpeed || 3);
-      setExplosionRadius(params.radius || 150);
-      setExplosionDuration(params.duration || 10);
-      setExplosionDamping(params.damping || 0.99);
+      const config = presetData.config;
+      
+      // Применяем настройки из конфига
+      setParticleCount(config.particleCount ?? 5000);
+      setParticleSize(config.particleSize ?? 4);
+      setParticleShape(config.shape ?? 'circle');
+      setInitSpeed(config.initSpeed ?? 1.5);
+      setColors(config.colors ?? ['#FFD700', '#FFA500', '#FF8C00', '#FFB347', '#FFCC66']);
+      setSelectedBehavior(config.behavior ?? 'followMouse');
       
       if (config.canvasBgColor) setCanvasBgColor(config.canvasBgColor);
       if (config.canvasWidth && config.canvasHeight) {
         setCanvasSize({ width: config.canvasWidth, height: config.canvasHeight });
       }
       
+      const params = config.behaviorParams || {};
+      setFollowSpeed(params.speed ?? 2);
+      setGravityStrength(params.strength ?? 0.1);
+      setGravityMaxSpeed(params.maxSpeed ?? 4);
+      setRepulseRadius(params.radius ?? 150);
+      setRepulseForce(params.force ?? 3);
+      setRepulseDamping(params.damping ?? 0.97);
+      setMagneticStrength(params.strength ?? 0.02);
+      setMagneticFieldStrength(params.fieldStrength ?? 1.5);
+      setMagneticRadius(params.radius ?? 200);
+      setMagneticMaxSpeed(params.maxSpeed ?? 4);
+      setVortexStrength(params.strength ?? 0.15);
+      setVortexRadius(params.radius ?? 200);
+      setVortexMaxSpeed(params.maxSpeed ?? 4);
+      setWaveAmplitude(params.amplitude ?? 0.8);
+      setWaveFrequency(params.frequency ?? 0.015);
+      setWaveSpeed(params.speed ?? 0.03);
+      setWaveMaxSpeed(params.maxSpeed ?? 3);
+      setExplosionRadius(params.radius ?? 150);
+      setExplosionDuration(params.duration ?? 10);
+      setExplosionDamping(params.damping ?? 0.99);
+      
       showToast('Пресет загружен', 'success');
+      
+      // Ждём обновления состояния и инициализируем визуализацию
+      setTimeout(() => {
+        initParticleSystem();
+      }, 100);
+      
     } catch (error) {
       console.error('Failed to load preset:', error);
       showToast('Не удалось загрузить пресет', 'error');
+      navigate('/profile');
     } finally {
       setIsLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, navigate, initParticleSystem]);
 
   const savePreset = async () => {
     if (!presetName.trim()) {
@@ -255,7 +272,7 @@ export const Constructor = () => {
       } else {
         const newPreset = await presetsApi.createPreset({ name: presetName, config, isPublic });
         showToast('Пресет сохранён', 'success');
-        window.history.replaceState({}, '', `/constructor?id=${newPreset.id}`);
+        navigate(`/constructor?id=${newPreset.id}`);
       }
     } catch (error) {
       console.error('Failed to save preset:', error);
@@ -304,6 +321,7 @@ export const Constructor = () => {
     setExplosionRadius(150);
     setExplosionDuration(10);
     showToast('Сброшено к стандартным настройкам', 'success');
+    initParticleSystem();
   };
 
   useEffect(() => {
@@ -311,7 +329,7 @@ export const Constructor = () => {
     script.src = 'https://cdn.jsdelivr.net/gh/Mihalkevitc/particle-lib@main/dist/particle-lib.umd.js';
     script.onload = () => {
       if (presetId) {
-        loadPreset(parseInt(presetId));
+        loadPresetForEdit(parseInt(presetId));
       } else {
         initParticleSystem();
       }
@@ -326,7 +344,7 @@ export const Constructor = () => {
   }, []);
 
   useEffect(() => {
-    if (particleSystemRef.current && !isLoading) {
+    if (particleSystemRef.current && !isLoading && !presetId) {
       applySettings();
     }
   }, [particleCount, particleSize, particleShape, initSpeed, colors]);
