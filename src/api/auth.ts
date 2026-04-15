@@ -10,4 +10,10 @@ export const authApi = {
 
   getMe: (): Promise<User> =>
     http.get('/users/me').then(res => res.data),
+
+  updateProfile: (data: { email: string }): Promise<User> =>
+    http.put('/users/me', data).then(res => res.data),
+
+  deleteAccount: (): Promise<void> =>
+    http.delete('/users/me'),
 };

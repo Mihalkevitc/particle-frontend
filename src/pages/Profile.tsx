@@ -1,63 +1,84 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '@/context/ThemeContext';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useToast } from '@/hooks/useToast';
 import { presetsApi } from '@/api/presets';
+import { authApi } from '@/api/auth';
 import { Toast } from '@/components/Toast';
-
-interface MyPreset {
-  id: number;
-  name: string;
-  isPublic: boolean;
-  createdAt: string;
-  config: any;
-}
-
-interface LikedPreset {
-  id: number;
-  name: string;
-  author: { id: number; email: string };
-  likesCount: number;
-  viewsCount: number;
-  createdAt: string;
-}
+import { Preset } from '@/types';
 
 export const Profile = () => {
   const navigate = useNavigate();
   const { mode, theme } = useTheme();
-  const { user, isAuthenticated } = useAuthStore();
+  const { user, isAuthenticated, logout, checkAuth } = useAuthStore();
   const { toasts, showToast, removeToast } = useToast();
   
-  const [myPresets, setMyPresets] = useState<MyPreset[]>([]);
-  const [likedPresets, setLikedPresets] = useState<LikedPreset[]>([]);
   const [activeTab, setActiveTab] = useState<'my' | 'liked'>('my');
+  const [myPresets, setMyPresets] = useState<Preset[]>([]);
+  const [likedPresets, setLikedPresets] = useState<Preset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
+  const [isEditing, setIsEditing] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
   const currentTheme = mode === 'dark' ? theme.dark : theme.light;
 
+  // Загрузка пресетов пользователя
   const loadMyPresets = async () => {
     try {
       const data = await presetsApi.getMyPresets();
       setMyPresets(data);
     } catch (error) {
       console.error('Failed to load my presets:', error);
-      showToast('Не удалось загрузить пресеты', 'error');
     }
   };
 
+  // Загрузка лайкнутых пресетов
   const loadLikedPresets = async () => {
     try {
       const data = await presetsApi.getLikedPresets();
       setLikedPresets(data);
     } catch (error) {
       console.error('Failed to load liked presets:', error);
-      showToast('Не удалось загрузить лайкнутые пресеты', 'error');
     }
   };
 
+  // Редактирование профиля
+  const handleUpdateProfile = async () => {
+    if (!newEmail.trim()) {
+      showToast('Введите email', 'warning');
+      return;
+    }
+    
+    try {
+      await authApi.updateProfile({ email: newEmail });
+      await checkAuth(); // Обновляем данные пользователя
+      setIsEditing(false);
+      setNewEmail('');
+      showToast('Email обновлён', 'success');
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      showToast('Не удалось обновить email', 'error');
+    }
+  };
+
+  // Удаление аккаунта
+  const handleDeleteAccount = async () => {
+    try {
+      await authApi.deleteAccount();
+      logout();
+      showToast('Аккаунт удалён', 'success');
+      navigate('/');
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+      showToast('Не удалось удалить аккаунт', 'error');
+    }
+  };
+
+  // Удаление пресета
   const handleDeletePreset = async (id: number) => {
-    if (!confirm('Удалить пресет? Это действие нельзя отменить.')) return;
+    if (!confirm('Удалить пресет?')) return;
     
     try {
       await presetsApi.deletePreset(id);
@@ -69,12 +90,9 @@ export const Profile = () => {
     }
   };
 
+  // Редактирование пресета
   const handleEditPreset = (id: number) => {
     navigate(`/constructor?id=${id}`);
-  };
-
-  const handleViewPreset = (id: number) => {
-    navigate(`/preset/${id}`);
   };
 
   useEffect(() => {
@@ -83,12 +101,12 @@ export const Profile = () => {
       return;
     }
     
-    const loadAll = async () => {
+    const loadData = async () => {
       setIsLoading(true);
       await Promise.all([loadMyPresets(), loadLikedPresets()]);
       setIsLoading(false);
     };
-    loadAll();
+    loadData();
   }, [isAuthenticated, navigate]);
 
   if (isLoading) {
@@ -110,53 +128,133 @@ export const Profile = () => {
           marginBottom: '24px',
           border: `1px solid ${currentTheme.border}`,
         }}>
-          <h1 style={{ fontSize: '28px', color: currentTheme.textPrimary, marginBottom: '8px' }}>
-            Профиль
-          </h1>
-          <div style={{ color: currentTheme.textSecondary }}>
-            <div>Email: {user?.email}</div>
-            <div>Дата регистрации: {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}</div>
-            <div>Всего пресетов: {myPresets.length}</div>
-            <div>Лайкнуто пресетов: {likedPresets.length}</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <h1 style={{ fontSize: '28px', color: currentTheme.textPrimary, marginBottom: '8px' }}>
+                👤 {user?.email?.split('@')[0]}
+              </h1>
+              <div style={{ color: currentTheme.textSecondary, fontSize: '14px' }}>
+                {user?.email}
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '12px' }}>
+              {!isEditing ? (
+                <button
+                  onClick={() => {
+                    setNewEmail(user?.email || '');
+                    setIsEditing(true);
+                  }}
+                  style={{
+                    padding: '10px 20px',
+                    backgroundColor: currentTheme.surfaceHover,
+                    border: `1px solid ${currentTheme.border}`,
+                    borderRadius: '12px',
+                    color: currentTheme.textPrimary,
+                    cursor: 'pointer',
+                  }}
+                >
+                  ✏️ Редактировать
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleUpdateProfile}
+                    style={{
+                      padding: '10px 20px',
+                      backgroundColor: theme.accent,
+                      border: 'none',
+                      borderRadius: '12px',
+                      color: '#000',
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                    }}
+                  >
+                    💾 Сохранить
+                  </button>
+                  <button
+                    onClick={() => setIsEditing(false)}
+                    style={{
+                      padding: '10px 20px',
+                      backgroundColor: currentTheme.surfaceHover,
+                      border: `1px solid ${currentTheme.border}`,
+                      borderRadius: '12px',
+                      color: currentTheme.textPrimary,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Отмена
+                  </button>
+                </>
+              )}
+              
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#ff4757',
+                  border: 'none',
+                  borderRadius: '12px',
+                  color: '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                🗑️ Удалить аккаунт
+              </button>
+            </div>
           </div>
+          
+          {isEditing && (
+            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: `1px solid ${currentTheme.border}` }}>
+              <label style={{ display: 'block', marginBottom: '8px', color: currentTheme.textPrimary, fontSize: '14px', fontWeight: '500' }}>
+                Новый email
+              </label>
+              <input
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                  border: `1px solid ${currentTheme.border}`,
+                  borderRadius: '12px',
+                  color: currentTheme.textPrimary,
+                }}
+              />
+            </div>
+          )}
         </div>
         
-        {/* Табы */}
+        {/* Вкладки */}
         <div style={{
           backgroundColor: currentTheme.surface,
           borderRadius: '20px',
-          padding: '20px',
+          padding: '24px',
           border: `1px solid ${currentTheme.border}`,
         }}>
-          <div style={{ display: 'flex', gap: '8px', borderBottom: `1px solid ${currentTheme.border}`, marginBottom: '20px' }}>
-            <button
-              onClick={() => setActiveTab('my')}
-              style={{
-                padding: '10px 20px',
-                background: 'none',
-                border: 'none',
-                borderBottom: activeTab === 'my' ? `2px solid ${theme.accent}` : '2px solid transparent',
-                color: activeTab === 'my' ? theme.accent : currentTheme.textSecondary,
-                cursor: 'pointer',
-                fontSize: '16px',
-              }}
-            >
-              Мои пресеты ({myPresets.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('liked')}
-              style={{
-                padding: '10px 20px',
-                background: 'none',
-                border: 'none',
-                borderBottom: activeTab === 'liked' ? `2px solid ${theme.accent}` : '2px solid transparent',
-                color: activeTab === 'liked' ? theme.accent : currentTheme.textSecondary,
-                cursor: 'pointer',
-                fontSize: '16px',
-              }}
-            >
-              Лайкнутые ({likedPresets.length})
-            </button>
+          <div style={{ display: 'flex', gap: '8px', borderBottom: `1px solid ${currentTheme.border}`, marginBottom: '24px' }}>
+            {[
+              { id: 'my', label: `📁 Мои пресеты (${myPresets.length})` },
+              { id: 'liked', label: `❤️ Лайкнутые (${likedPresets.length})` },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                style={{
+                  padding: '10px 16px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: activeTab === tab.id ? `2px solid ${theme.accent}` : '2px solid transparent',
+                  color: activeTab === tab.id ? theme.accent : currentTheme.textSecondary,
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: activeTab === tab.id ? '600' : '400',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
           
           {/* Мои пресеты */}
@@ -164,31 +262,58 @@ export const Profile = () => {
             <div>
               {myPresets.length === 0 ? (
                 <p style={{ color: currentTheme.textSecondary, textAlign: 'center', padding: '40px' }}>
-                  У вас пока нет пресетов. Перейдите в Конструктор, чтобы создать первый!
+                  У вас пока нет пресетов. Создайте первый в конструкторе!
                 </p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   {myPresets.map(preset => (
-                    <div key={preset.id} style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '16px',
-                      backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-                      borderRadius: '12px',
-                      flexWrap: 'wrap',
-                      gap: '12px',
-                    }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: '600', color: currentTheme.textPrimary }}>{preset.name}</div>
-                        <div style={{ fontSize: '12px', color: currentTheme.textSecondary }}>
-                          {preset.isPublic ? '🌍 Публичный' : '🔒 Приватный'} • {new Date(preset.createdAt).toLocaleDateString()}
+                    <div
+                      key={preset.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '16px',
+                        backgroundColor: 'rgba(255,255,255,0.03)',
+                        borderRadius: '12px',
+                        flexWrap: 'wrap',
+                        gap: '12px',
+                      }}
+                    >
+                      <div>
+                        <h4 style={{ color: currentTheme.textPrimary, marginBottom: '4px' }}>{preset.name}</h4>
+                        <div style={{ display: 'flex', gap: '12px', fontSize: '12px', color: currentTheme.textSecondary }}>
+                          <span>{preset.isPublic ? '🌍 Публичный' : '🔒 Приватный'}</span>
+                          <span>📅 {new Date(preset.createdAt).toLocaleDateString()}</span>
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={() => handleViewPreset(preset.id)} style={{ padding: '6px 12px', backgroundColor: theme.accent, border: 'none', borderRadius: '8px', color: '#000', cursor: 'pointer' }}>👁️ Просмотр</button>
-                        <button onClick={() => handleEditPreset(preset.id)} style={{ padding: '6px 12px', backgroundColor: currentTheme.surfaceHover, border: `1px solid ${currentTheme.border}`, borderRadius: '8px', color: currentTheme.textPrimary, cursor: 'pointer' }}>✏️ Редактировать</button>
-                        <button onClick={() => handleDeletePreset(preset.id)} style={{ padding: '6px 12px', backgroundColor: '#ff4757', border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>🗑️ Удалить</button>
+                        <button
+                          onClick={() => handleEditPreset(preset.id)}
+                          style={{
+                            padding: '8px 16px',
+                            backgroundColor: currentTheme.surfaceHover,
+                            border: `1px solid ${currentTheme.border}`,
+                            borderRadius: '8px',
+                            color: currentTheme.textPrimary,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          ✏️ Редактировать
+                        </button>
+                        <button
+                          onClick={() => handleDeletePreset(preset.id)}
+                          style={{
+                            padding: '8px 16px',
+                            backgroundColor: '#ff4757',
+                            border: 'none',
+                            borderRadius: '8px',
+                            color: '#fff',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          🗑️ Удалить
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -202,28 +327,33 @@ export const Profile = () => {
             <div>
               {likedPresets.length === 0 ? (
                 <p style={{ color: currentTheme.textSecondary, textAlign: 'center', padding: '40px' }}>
-                  Вы ещё не лайкнули ни один пресет. Лайкайте понравившиеся в ленте!
+                  Вы ещё не лайкнули ни один пресет
                 </p>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   {likedPresets.map(preset => (
-                    <div key={preset.id} style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '16px',
-                      backgroundColor: mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-                      borderRadius: '12px',
-                      flexWrap: 'wrap',
-                      gap: '12px',
-                    }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: '600', color: currentTheme.textPrimary }}>{preset.name}</div>
+                    <div
+                      key={preset.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '16px',
+                        backgroundColor: 'rgba(255,255,255,0.03)',
+                        borderRadius: '12px',
+                        flexWrap: 'wrap',
+                        gap: '12px',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => navigate(`/preset/${preset.id}`)}
+                    >
+                      <div>
+                        <h4 style={{ color: currentTheme.textPrimary, marginBottom: '4px' }}>{preset.name}</h4>
                         <div style={{ fontSize: '12px', color: currentTheme.textSecondary }}>
-                          Автор: {preset.author.email.split('@')[0]} • ❤️ {preset.likesCount} • 👁️ {preset.viewsCount}
+                          Автор: {preset.userId}
                         </div>
                       </div>
-                      <button onClick={() => handleViewPreset(preset.id)} style={{ padding: '6px 12px', backgroundColor: theme.accent, border: 'none', borderRadius: '8px', color: '#000', cursor: 'pointer' }}>👁️ Просмотр</button>
+                      <span style={{ color: currentTheme.textSecondary, fontSize: '14px' }}>👉 Перейти</span>
                     </div>
                   ))}
                 </div>
@@ -232,6 +362,64 @@ export const Profile = () => {
           )}
         </div>
       </div>
+      
+      {/* Модальное окно подтверждения удаления аккаунта */}
+      {showDeleteConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+        }}>
+          <div style={{
+            backgroundColor: currentTheme.surface,
+            borderRadius: '20px',
+            padding: '32px',
+            maxWidth: '400px',
+            width: '90%',
+            textAlign: 'center',
+          }}>
+            <h3 style={{ color: currentTheme.textPrimary, marginBottom: '16px' }}>Удалить аккаунт?</h3>
+            <p style={{ color: currentTheme.textSecondary, marginBottom: '24px' }}>
+              Это действие необратимо. Все ваши пресеты, лайки и комментарии будут удалены.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button
+                onClick={handleDeleteAccount}
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: '#ff4757',
+                  border: 'none',
+                  borderRadius: '12px',
+                  color: '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                Да, удалить
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: currentTheme.surfaceHover,
+                  border: `1px solid ${currentTheme.border}`,
+                  borderRadius: '12px',
+                  color: currentTheme.textPrimary,
+                  cursor: 'pointer',
+                }}
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
       {toasts.map(toast => (
         <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => removeToast(toast.id)} />
