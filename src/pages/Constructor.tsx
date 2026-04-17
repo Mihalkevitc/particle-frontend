@@ -228,13 +228,27 @@ export const Constructor = () => {
       setExplosionDuration(params.duration ?? 10);
       setExplosionDamping(params.damping ?? 0.99);
       
-      showToast('Пресет загружен', 'success');
-      
-      // Ждём обновления состояния и инициализируем визуализацию
+    showToast('Пресет загружен', 'success');
+
+    // Ждём обновления состояния и инициализируем визуализацию
+    setTimeout(() => {
+      initParticleSystem();
+      // Дополнительно принудительно применяем поведение после инициализации
       setTimeout(() => {
-        initParticleSystem();
-      }, 100);
-      
+        if (particleSystemRef.current) {
+          particleSystemRef.current.setBehavior(selectedBehavior, getBehaviorParams());
+        }
+      }, 200);
+    }, 100);
+
+    setTimeout(() => {
+      if (particleSystemRef.current) {
+        particleSystemRef.current.destroy();
+        particleSystemRef.current = null;
+      }
+      initParticleSystem();
+    }, 500);
+
     } catch (error) {
       console.error('Failed to load preset:', error);
       showToast('Не удалось загрузить пресет', 'error');
@@ -242,6 +256,7 @@ export const Constructor = () => {
     } finally {
       setIsLoading(false);
     }
+
   }, [showToast, navigate, initParticleSystem]);
 
   const savePreset = async () => {
@@ -354,6 +369,14 @@ export const Constructor = () => {
       particleSystemRef.current.setBehavior(selectedBehavior, getBehaviorParams());
     }
   }, [selectedBehavior, followSpeed, gravityStrength, gravityMaxSpeed, repulseRadius, repulseForce, repulseDamping, magneticStrength, magneticFieldStrength, magneticRadius, magneticMaxSpeed, vortexStrength, vortexRadius, vortexMaxSpeed, waveAmplitude, waveFrequency, waveSpeed, waveMaxSpeed, explosionRadius, explosionDuration, explosionDamping]);
+
+  // Применяем поведение после загрузки пресета
+  useEffect(() => {
+    if (particleSystemRef.current && presetId && !isLoading) {
+      console.log('Applying behavior after load:', selectedBehavior);
+      particleSystemRef.current.setBehavior(selectedBehavior, getBehaviorParams());
+    }
+  }, [selectedBehavior, presetId, isLoading]);
 
   const renderBehaviorParams = () => {
     switch (selectedBehavior) {
