@@ -8,15 +8,30 @@ import { authApi } from '@/api/auth';
 import { Toast } from '@/components/Toast';
 import { Preset } from '@/types';
 
+interface Stats {
+  totalPresets: number;
+  totalLikes: number;
+  totalComments: number;
+  totalViews: number;
+  mostLikedPreset: Preset | null;
+}
+
 export const Profile = () => {
   const navigate = useNavigate();
   const { mode, theme } = useTheme();
   const { user, isAuthenticated, logout, checkAuth } = useAuthStore();
   const { toasts, showToast, removeToast } = useToast();
   
-  const [activeTab, setActiveTab] = useState<'my' | 'liked'>('my');
+  const [activeTab, setActiveTab] = useState<'my' | 'liked' | 'stats'>('my');
   const [myPresets, setMyPresets] = useState<Preset[]>([]);
   const [likedPresets, setLikedPresets] = useState<Preset[]>([]);
+  const [stats, setStats] = useState<Stats>({
+    totalPresets: 0,
+    totalLikes: 0,
+    totalComments: 0,
+    totalViews: 0,
+    mostLikedPreset: null,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [newEmail, setNewEmail] = useState('');
@@ -29,8 +44,10 @@ export const Profile = () => {
     try {
       const data = await presetsApi.getMyPresets();
       setMyPresets(data);
+      return data;
     } catch (error) {
       console.error('Failed to load my presets:', error);
+      return [];
     }
   };
 
@@ -39,9 +56,46 @@ export const Profile = () => {
     try {
       const data = await presetsApi.getLikedPresets();
       setLikedPresets(data);
+      return data;
     } catch (error) {
       console.error('Failed to load liked presets:', error);
+      return [];
     }
+  };
+
+  // Расчёт статистики
+  const calculateStats = async () => {
+    const presets = await loadMyPresets();
+    
+    let totalLikes = 0;
+    let totalComments = 0;
+    let totalViews = 0;
+    let mostLiked: Preset | null = null;
+    
+    for (const preset of presets) {
+      // Получаем полную информацию о пресете (с лайками, просмотрами)
+      try {
+        const fullPreset = await presetsApi.getPresetById(preset.id);
+        totalLikes += fullPreset.likesCount;
+        totalComments += fullPreset.commentsCount;
+        totalViews += fullPreset.viewsCount;
+        
+        if (!mostLiked || (fullPreset.likesCount > (mostLiked as any).likesCount)) {
+          mostLiked = preset;
+          (mostLiked as any).likesCount = fullPreset.likesCount;
+        }
+      } catch (error) {
+        console.error('Failed to get preset stats:', error);
+      }
+    }
+    
+    setStats({
+      totalPresets: presets.length,
+      totalLikes,
+      totalComments,
+      totalViews,
+      mostLikedPreset: mostLiked,
+    });
   };
 
   // Редактирование профиля
@@ -53,7 +107,7 @@ export const Profile = () => {
     
     try {
       await authApi.updateProfile({ email: newEmail });
-      await checkAuth(); // Обновляем данные пользователя
+      await checkAuth();
       setIsEditing(false);
       setNewEmail('');
       showToast('Email обновлён', 'success');
@@ -83,6 +137,7 @@ export const Profile = () => {
     try {
       await presetsApi.deletePreset(id);
       setMyPresets(prev => prev.filter(p => p.id !== id));
+      await calculateStats();
       showToast('Пресет удалён', 'success');
     } catch (error) {
       console.error('Failed to delete preset:', error);
@@ -103,7 +158,7 @@ export const Profile = () => {
     
     const loadData = async () => {
       setIsLoading(true);
-      await Promise.all([loadMyPresets(), loadLikedPresets()]);
+      await Promise.all([loadMyPresets(), loadLikedPresets(), calculateStats()]);
       setIsLoading(false);
     };
     loadData();
@@ -135,6 +190,9 @@ export const Profile = () => {
               </h1>
               <div style={{ color: currentTheme.textSecondary, fontSize: '14px' }}>
                 {user?.email}
+              </div>
+              <div style={{ color: currentTheme.textSecondary, fontSize: '14px', marginTop: '8px' }}>
+                Регистрация: {new Date(user?.createdAt || '').toLocaleDateString()}
               </div>
             </div>
             
@@ -237,6 +295,7 @@ export const Profile = () => {
             {[
               { id: 'my', label: `📁 Мои пресеты (${myPresets.length})` },
               { id: 'liked', label: `❤️ Лайкнутые (${likedPresets.length})` },
+              { id: 'stats', label: 'Статистика' },
             ].map(tab => (
               <button
                 key={tab.id}
@@ -356,6 +415,89 @@ export const Profile = () => {
                       <span style={{ color: currentTheme.textSecondary, fontSize: '14px' }}>👉 Перейти</span>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Статистика */}
+          {activeTab === 'stats' && (
+            <div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '20px',
+                marginBottom: '24px',
+              }}>
+                <div style={{
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  borderRadius: '16px',
+                  padding: '20px',
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '36px', fontWeight: '700', color: theme.accent }}>{stats.totalPresets}</div>
+                  <div style={{ fontSize: '14px', color: currentTheme.textSecondary }}>Всего пресетов</div>
+                </div>
+                
+                <div style={{
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  borderRadius: '16px',
+                  padding: '20px',
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '36px', fontWeight: '700', color: theme.accent }}>{stats.totalLikes}</div>
+                  <div style={{ fontSize: '14px', color: currentTheme.textSecondary }}>Всего лайков</div>
+                </div>
+                
+                <div style={{
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  borderRadius: '16px',
+                  padding: '20px',
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '36px', fontWeight: '700', color: theme.accent }}>{stats.totalComments}</div>
+                  <div style={{ fontSize: '14px', color: currentTheme.textSecondary }}>Всего комментариев</div>
+                </div>
+                
+                <div style={{
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  borderRadius: '16px',
+                  padding: '20px',
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '36px', fontWeight: '700', color: theme.accent }}>{stats.totalViews}</div>
+                  <div style={{ fontSize: '14px', color: currentTheme.textSecondary }}>Всего просмотров</div>
+                </div>
+              </div>
+              
+              {stats.mostLikedPreset && (
+                <div style={{
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  borderRadius: '16px',
+                  padding: '20px',
+                }}>
+                  <h4 style={{ color: currentTheme.textPrimary, marginBottom: '12px' }}>🏆 Самый популярный пресет</h4>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                    <div>
+                      <div style={{ fontWeight: '600', color: currentTheme.textPrimary }}>{stats.mostLikedPreset.name}</div>
+                      <div style={{ fontSize: '12px', color: currentTheme.textSecondary }}>
+                        ❤️ {(stats.mostLikedPreset as any).likesCount || 0} лайков
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => navigate(`/preset/${stats.mostLikedPreset!.id}`)}
+                      style={{
+                        padding: '8px 16px',
+                        backgroundColor: theme.accent,
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: '#000',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Перейти
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
