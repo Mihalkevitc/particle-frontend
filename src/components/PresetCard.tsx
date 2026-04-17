@@ -1,36 +1,81 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PublicPreset } from '@/types';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useLikesStore } from '@/store/useLikesStore';
 import { useToast } from '@/hooks/useToast';
 import { useTheme } from '@/context/ThemeContext';
-import { useState, useEffect } from 'react';
 
 interface PresetCardProps {
   preset: PublicPreset;
 }
 
+declare global {
+  interface Window {
+    ParticleLib: {
+      ParticleSystem: new () => {
+        init: (config: { canvas: HTMLCanvasElement; config: any }) => Promise<void>;
+        destroy: () => void;
+      };
+    };
+  }
+}
+
 export const PresetCard = ({ preset }: PresetCardProps) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const particleSystemRef = useRef<any>(null);
   const { isAuthenticated } = useAuthStore();
-  const { isLiked, like, unlike } = useLikesStore();
+  const { isLiked, like, unlike, loadLikedPresets } = useLikesStore();
   const { showToast } = useToast();
   const { mode, theme } = useTheme();
   const currentTheme = mode === 'dark' ? theme.dark : theme.light;
   
-  const [isLiking, setIsLiking] = useState(false);
-  const [liked, setLiked] = useState(false);
+  const liked = isLiked(preset.id);
   const [likesCount, setLikesCount] = useState(preset.likesCount);
+  const [isLiking, setIsLiking] = useState(false);
 
+  // Инициализация мини-визуализации
   useEffect(() => {
-    setLiked(isLiked(preset.id));
-  }, [preset.id, isLiked]);
+    if (!canvasRef.current || !window.ParticleLib) return;
+    
+    // Подготавливаем конфиг для превью (уменьшаем количество частиц)
+    const previewConfig = {
+      ...preset.config,
+      particleCount: Math.min(preset.config.particleCount || 500, 500),
+      particleSize: (preset.config.particleSize || 4) * 0.8,
+    };
+    
+    const initPreview = async () => {
+      if (particleSystemRef.current) {
+        particleSystemRef.current.destroy();
+      }
+      
+      const ps = new window.ParticleLib.ParticleSystem();
+      particleSystemRef.current = ps;
+      
+      await ps.init({
+        canvas: canvasRef.current,
+        config: previewConfig,
+      });
+      
+      // Устанавливаем цвет фона из конфига пресета
+      ps.setBackgroundColor(preset.config.canvasBgColor || '#0a0a0a');
+    };
+    
+    initPreview();
+    
+    return () => {
+      if (particleSystemRef.current) {
+        particleSystemRef.current.destroy();
+      }
+    };
+  }, [preset]);
 
   const handleLike = async (e: React.MouseEvent) => {
     e.preventDefault();
     
-    // Если не авторизован — показываем уведомление
     if (!isAuthenticated) {
-      showToast('❤️ Чтобы поставить лайк, войдите в аккаунт', 'warning');
+      showToast('Войдите, чтобы поставить лайк', 'warning');
       return;
     }
 
@@ -39,15 +84,14 @@ export const PresetCard = ({ preset }: PresetCardProps) => {
       if (liked) {
         await unlike(preset.id);
         setLikesCount(prev => prev - 1);
-        setLiked(false);
       } else {
         await like(preset.id);
         setLikesCount(prev => prev + 1);
-        setLiked(true);
       }
+      await loadLikedPresets();
     } catch (error) {
       console.error('Failed to toggle like:', error);
-      showToast('Не удалось поставить лайк. Попробуйте позже.', 'error');
+      showToast('Не удалось поставить лайк', 'error');
     } finally {
       setIsLiking(false);
     }
@@ -76,17 +120,25 @@ export const PresetCard = ({ preset }: PresetCardProps) => {
         e.currentTarget.style.transform = 'translateY(0)';
         e.currentTarget.style.boxShadow = 'none';
       }}>
+        {/* Мини-холст с визуализацией */}
         <div style={{
-          backgroundColor: mode === 'dark' ? '#111' : '#e0e0e0',
+          backgroundColor: '#111',
           borderRadius: '12px',
           height: '150px',
           marginBottom: '12px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '32px',
+          overflow: 'hidden',
+          position: 'relative',
         }}>
-          🎨
+          <canvas
+            ref={canvasRef}
+            width={300}
+            height={150}
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'block',
+            }}
+          />
         </div>
 
         <h3 style={{ color: currentTheme.textPrimary, fontSize: '18px', marginBottom: '8px' }}>
@@ -114,7 +166,8 @@ export const PresetCard = ({ preset }: PresetCardProps) => {
             border: `1px solid ${liked ? '#ff4757' : currentTheme.border}`,
             borderRadius: '8px',
             color: liked ? '#ff4757' : currentTheme.textPrimary,
-            cursor: !isAuthenticated ? 'not-allowed' : 'pointer',
+            cursor: isAuthenticated ? 'pointer' : 'not-allowed',
+            opacity: isAuthenticated ? 1 : 0.5,
             transition: 'all 0.2s',
             display: 'flex',
             alignItems: 'center',
