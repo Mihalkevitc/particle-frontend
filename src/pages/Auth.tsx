@@ -1,9 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/useAuthStore';
 import { useTheme } from '@/context/ThemeContext';
 
 type AuthMode = 'login' | 'register';
+
+declare global {
+  interface Window {
+    ParticleLib: {
+      ParticleSystem: new () => {
+        init: (config: { canvas: HTMLCanvasElement; config: any }) => Promise<void>;
+        destroy: () => void;
+      };
+    };
+  }
+}
 
 export const Auth = () => {
   const [mode, setMode] = useState<AuthMode>('login');
@@ -16,6 +27,62 @@ export const Auth = () => {
   const { login, register } = useAuthStore();
   const { mode: themeMode, theme } = useTheme();
   const currentTheme = themeMode === 'dark' ? theme.dark : theme.light;
+  
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const particleSystemRef = useRef<any>(null);
+
+  // Инициализация фоновой визуализации
+  useEffect(() => {
+    if (!canvasRef.current || !window.ParticleLib) return;
+
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/gh/Mihalkevitc/particle-lib@main/dist/particle-lib.umd.js';
+    script.onload = () => {
+      const ps = new window.ParticleLib.ParticleSystem();
+      particleSystemRef.current = ps;
+      
+      // Настройка волнового поведения для фона
+      ps.init({
+        canvas: canvasRef.current,
+        config: {
+          particleCount: 10000,
+          colors: ['#FFD700', '#FFA500', '#FF8C00', '#FFB347', '#FFCC66'],
+          particleSize: 7,
+          maxSpeed: 2,
+          behavior: 'wave',
+          shape: 'circle',
+          initSpeed: 1,
+          behaviorParams: {
+            speed: 0.02,
+            maxSpeed: 2,
+            amplitude: 0.2,
+            frequency: 0.018
+          }
+        }
+      });
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      if (particleSystemRef.current) {
+        particleSystemRef.current.destroy();
+      }
+    };
+  }, []);
+
+  // Адаптация размера canvas под окно
+  useEffect(() => {
+    const handleResize = () => {
+      if (canvasRef.current) {
+        canvasRef.current.width = window.innerWidth;
+        canvasRef.current.height = window.innerHeight;
+      }
+    };
+    
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,15 +109,42 @@ export const Auth = () => {
 
   return (
     <div style={{
+      position: 'relative',
       minHeight: '100vh',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: themeMode === 'dark' 
-        ? 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)'
-        : 'linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%)',
+      overflow: 'hidden',
     }}>
+      {/* Фоновый canvas с частицами */}
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          display: 'block',
+          zIndex: 0,
+        }}
+      />
+      
+      {/* Затемнение фона для читаемости формы */}
       <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        zIndex: 1,
+      }} />
+      
+      {/* Форма авторизации */}
+      <div style={{
+        position: 'relative',
+        zIndex: 2,
         backgroundColor: currentTheme.surface,
         backdropFilter: 'blur(10px)',
         borderRadius: '24px',
